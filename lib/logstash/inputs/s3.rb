@@ -8,6 +8,9 @@ require "stud/interval"
 require "stud/temporary"
 require "aws-sdk"
 require "logstash/inputs/s3/patch"
+## ADDED HERE ##
+require "open3"
+## FINISHED ADDING ##
 
 Aws.eager_autoload!
 # Stream events from files from a S3 bucket.
@@ -217,7 +220,7 @@ class LogStash::Inputs::S3 < LogStash::Inputs::Base
     line.start_with?('#Fields: ')
   end
 
-  private 
+  private
   def update_metadata(metadata, event)
     line = event.get('message').strip
 
@@ -232,8 +235,12 @@ class LogStash::Inputs::S3 < LogStash::Inputs::Base
 
   private
   def read_file(filename, &block)
-    if gzip?(filename) 
+    if gzip?(filename)
       read_gzip_file(filename, block)
+    ## ADDED HERE ##
+    elsif lz4?(filename)
+      read_lz4_file(filename, block)
+  ## FINISHED ADDING ##
     else
       read_plain_file(filename, block)
     end
@@ -263,13 +270,50 @@ class LogStash::Inputs::S3 < LogStash::Inputs::Base
     raise e
   end
 
+  ## ADDED HERE ##
+    private
+    def read_lz4_file(filename, block)
+      File.open(filename) do |lz4_file|
+        while true do
+          # sending values in file to a local copy to use command line
+          output = File.open("./#{filename}", "w")
+          output.puts lz4_file.read
+          output.close
+
+          # decompressing using command line
+          cmd_decompress = "lz4 -d " + filename + " " + filename.chomp("lz4").concat("txt")
+          Open3.popen3(cmd_decompress)
+
+          File.open(filename.chomp("lz4").concat("txt"), 'rb') do |decompressed_file|
+            decompressed_file.each(&block)
+          end
+
+          # cleaning up
+          cmd_clean = "rm " + filename.chomp("lz4") + "*"
+          Open3.popen3(cmd_clean)
+        end
+      end
+      # FIGURE OUT ERROR CODE TO CATCH FOR? OR IS THIS GOOD ENOUGH
+    rescue Error => e
+      @logger.error("LZ4 codec: We cannot decompress the lz4 file", :filename => filename)
+      raise e
+    end
+  ## FINISHED ADDING ##
+
   private
   def gzip?(filename)
     filename.end_with?('.gz')
   end
-  
+
+  ## ADDED HERE ##
+    private
+    def lz4?(filename)
+      filename.end_with?('.lz4')
+    end
+  ## FINISHED ADDING ##
+
   private
-  def sincedb 
+  def sincedb
     @sincedb ||= if @sincedb_path.nil?
                     @logger.info("Using default generated file for the sincedb", :filename => sincedb_file)
                     SinceDB::File.new(sincedb_file)
