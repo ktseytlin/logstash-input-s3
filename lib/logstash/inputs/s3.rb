@@ -9,7 +9,7 @@ require "stud/temporary"
 require "aws-sdk"
 require "logstash/inputs/s3/patch"
 ## ADDED HERE ##
-require "open3"
+# require "open3"
 ## FINISHED ADDING ##
 
 Aws.eager_autoload!
@@ -282,7 +282,8 @@ class LogStash::Inputs::S3 < LogStash::Inputs::Base
 
           # decompressing using command line
           cmd_decompress = "lz4 -d " + filename + " " + filename.chomp("lz4").concat("txt")
-          Open3.popen3(cmd_decompress)
+          system cmd_decompress
+          # Open3.popen3(cmd_decompress)
 
           File.open(filename.chomp("lz4").concat("txt"), 'rb') do |decompressed_file|
             decompressed_file.each(&block)
@@ -290,7 +291,8 @@ class LogStash::Inputs::S3 < LogStash::Inputs::Base
 
           # cleaning up
           cmd_clean = "rm " + filename.chomp("lz4") + "*"
-          Open3.popen3(cmd_clean)
+          system cmd_clean
+          #Open3.popen3(cmd_clean)
         end
       end
       # FIGURE OUT ERROR CODE TO CATCH FOR? OR IS THIS GOOD ENOUGH
